@@ -14,7 +14,7 @@ multiple times with different settings
 
 ## Screenshot
 
-![UI Screenshot](https://raw.github.com//gimblll/GBL-Texture-Exporter/screenshot.png)
+![UI Screenshot](https://raw.githubusercontent.com/gimblll/GBL-Texture-Exporter/master/screenshot.png)
 
 ## Installing
 
