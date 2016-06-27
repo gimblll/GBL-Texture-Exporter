@@ -22,10 +22,12 @@
 ////////////////
 // Script configuration
 
+// TODO: button: add all layers with "export" in name
+// TODO: pattern for generating default export filename -> default filename after add -> replace spaces with underscores so 'select target' works straight away
+// TODO: 'clear solo' button to clear solo tags from all exports
 // TODO: allow running the export batch process without spawning the whole interface
 // TODO: allow configuring the export format options explicitly
 // TODO: cannot find any working way to make the log box auto scrolling... argh!
-// TODO: the layer dropdown would probably be better in the export info panel, as now if you want to fix it you have to manually type stuff
 
 // $.level = 1 // Break on error - (Unfortunately Photoshop bugs when parsing actions list making this annoying to use)
 
@@ -33,7 +35,7 @@ const DEV_LOG_ENABLED = false;
 const PREFERRED_PANEL_WIDTH = 1000;
 const OPTIONS_FILENAME = "GBLSpriteExporterAppSettings.json";
 const APPLICATION_NAME = "GBL Texture Exporter"
-const APPLICATION_VERSION = "1.00"
+const APPLICATION_VERSION = "1.02"
 const XMP_METADATA_PROPERTY_NAME = "TextureExporterDocumentPreferencesJSONv1"
 const XMP_METADATA_NAMESPACE = "http://ns.gimblll.com/ps_texture_exporter";
 const XMP_METADATA_NS_PREFIX = "nsgbl:";
@@ -158,7 +160,7 @@ function try_parse_json(str)
 	return null;
 }
 
-function get_all_exportable_layers_raw(doc)
+function get_all_exportable_layers_raw_old(doc)
 {
 	var result = [];
 
@@ -173,11 +175,29 @@ function get_all_exportable_layers_raw(doc)
 	return result;
 }
 
+function get_all_exportable_layers_raw(doc, result)
+{
+	var layers = doc.layers;
+	var layer_count = layers.length; // Ask only once, it's really slow
+
+	for (var i = 0; i < layer_count; ++i)
+	{	
+		var layer = layers[i];
+		if (layer.typename == "LayerSet" || layer.typename == "ArtLayer")
+		{
+			result.push(layer);
+			//get_all_exportable_layers_raw(layer, result); // Recursive (TOO SLOW STILL WITH MANY LAYRES... CANNOT USE)
+		}
+	}
+}
+
 function new_layer_cache(doc)
 {
 	// Read all exportable layers and cache them separately. Have to cache them
 	// because for some reason basic layer iteration is really slow in Photoshop.
-	var layers_cached = get_all_exportable_layers_raw(doc);
+	var layers_cached = [];
+	get_all_exportable_layers_raw(doc, layers_cached);
+//	var layers_cached = get_all_exportable_layers_raw_old(doc);
 
 	return {
 		layers 			: layers_cached,
@@ -479,7 +499,27 @@ function make_default_settings()
     	resize : 100,
     	solo : false,
     	post_action : null,
+    	trim : false,
     };
+}
+
+function get_resized_size(doc, settings)
+{
+	if (settings.resize instanceof Array)
+	{
+		// Explicit size
+		assert(settings.resize.length == 2);
+		return settings.resize;
+	}
+	else
+	{
+		// Percentage
+		var resize_scale = settings.resize / 100.0;
+		var resized_x = doc.width.as("px") * resize_scale;
+		var resized_y = doc.height.as("px") * resize_scale;
+
+		return [ resized_x, resized_y ];
+	}
 }
 
 function is_export_enabled(export_settings, export_item_idx)
@@ -592,39 +632,59 @@ function create_export_list_panel(win, doc)
 
 			// Add item for the layer into the list
 			var export_list_item = export_list.items[i];
-			export_list_item.text = i; 
+//			export_list_item.text = i; 
+			export_list_item.text = "";
+
+			// TEMP KLUDGE UNTIL NEW TABLE API MANIFESTS ITSELF TO PHOTOSHOP
+			// ... WHICH SEESM TO BE NEVER
+			export_list_item.text += export_data.source_layer_name + " / "; 
 
 			// Layer name
-			export_list_item.subItems[0].text = export_data.source_layer_name;
+//			export_list_item.subItems[0].text = export_data.source_layer_name;
 		
 			// Status
 			var layer_exists = !!layer_cache.get_ps_layer(export_data.source_layer_name);
 			if (layer_exists)
 			{
-				export_list_item.subItems[1].text = "OK";
+	//			export_list_item.subItems[1].text = "OK";
+				export_list_item.text += "OK" + " / "; 
 			}
 			else
 			{
-				export_list_item.subItems[1].text = "Layer not found";
+//				export_list_item.subItems[1].text = "Layer not found";
+				export_list_item.text += "Layer not found" + " / "; 
 			}
 
 			// Target path
-			export_list_item.subItems[2].text = export_data.export_path;
+//			export_list_item.subItems[2].text = export_data.export_path;
+			export_list_item.text += export_data.export_path + " / "; 
 
 			// Action
 			if (export_data.post_action)
 			{
-				export_list_item.subItems[3].text = export_data.post_action[1];
+//				export_list_item.subItems[3].text = export_data.post_action[1];
+				export_list_item.text += export_data.post_action[1] + " / "; 
 			}
 			else
 			{
-				export_list_item.subItems[3].text = "";
+//				export_list_item.subItems[3].text = "";
+				export_list_item.text += " / "; 
 			}
 
 			// Resize
-			export_list_item.subItems[4].text = export_data.resize;
+//			export_list_item.subItems[4].text = export_data.resize;
+			export_list_item.text += export_data.resize + " / "; 
 
-			export_list_item.checked = is_export_enabled(export_settings, i);
+			// Trim
+			export_list_item.text += export_data.trim + " / "; 
+
+
+			if (is_export_enabled(export_settings, i))
+				export_list_item.text += "[]";
+			else
+				export_list_item.text += "[ NO EXPORT ]";
+
+//			export_list_item.checked = is_export_enabled(export_settings, i);
 		}
 	}
 
@@ -961,17 +1021,18 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 
 		if (export_data)
 		{
-			var resize_scale = export_data.resize / 100.0;
-			var resized_x = parseInt(doc.width) * resize_scale;
-			var resized_y = parseInt(doc.height) * resize_scale;
-
-			resize_text.text = "Resize percentage (current export res: " + resized_x + " x " + resized_y + ")";
+			var resized_size =  get_resized_size(doc, export_data);
+			resize_text.text = "Resize (precentage or explicit NxN) (current export res: " + resized_size[0] + " x " + resized_size[1] + ")";
 		}
 		else
 		{
-			resize_text.text = "Resize percentage";
+			resize_text.text = "Resize (precentage or explicit NxN)";
 		}
 	}
+
+	var trim_checkbox = panel.add("checkbox")
+	trim_checkbox.text = "Trim output (all sides)"
+	trim_checkbox.onClick = refresh_model;
 
 	function refresh_view()
 	{
@@ -984,6 +1045,7 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 			solo_box.value = !!(export_data.solo);
 			set_post_action(export_data.post_action);
 			resize_box.text = export_data.resize;
+			trim_checkbox.value = !!(export_data.trim);
 		}
 		else
 		{
@@ -992,6 +1054,7 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 			solo_box.value = undefined;
 			path_box.text = "";
 			resize_box.text = "";
+			trim_checkbox.value = undefined;
 		}
 
 		refresh_resize_text();
@@ -1007,11 +1070,36 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 			export_data.source_layer_name = name_box.text;
 			export_data.export_path = path_box.text;
 			export_data.solo = solo_box.value;
+			export_data.trim = trim_checkbox.value;
 
-			// Clamp resize value to reasonable range
-			var resize_value = parseInt(resize_box.text) || 100;
-			resize_value = Math.min(Math.max(resize_value, 1), 10000);
-			export_data.resize = resize_value;
+			// Parse resize value
+			var resize_txt = resize_box.text;
+			if (resize_txt.indexOf('x') != -1)
+			{
+				// Assume explicit resolution (NxN)
+				var split = resize_txt.split('x');
+				var x = parseInt(split[0]) || -1;
+				var y = parseInt(split[1]) || -1;
+
+				if (x <= 0 || y <= 0)
+				{
+					// Failed to parse, assign default
+					export_data.resize = 100;
+				}
+				else
+				{
+					// Parse ok, assing explicit resolution
+					export_data.resize = [ x, y ];
+				}
+			}
+			else
+			{
+				// Assume single value (percentage)
+				var resize_value = parseInt(resize_box.text) || 100;
+				resize_value = Math.min(Math.max(resize_value, 1), 10000);
+				export_data.resize = resize_value;
+			}
+
 
 			// Write the settings back
 			panel_export_list.setNewSelectionSettings(export_data);
@@ -1071,6 +1159,10 @@ function create_master_button_panel(win)
 	btn_export.helpTip = "Export all enabled batch items to disk."
 	btn_export.onClick = function () { result.onExport(); }
 
+	var btn_export_selected = btn_group.add("button", undefined, "Export Only Selected");
+	btn_export_selected.helpTip = "Export only selected (from list) item."
+	btn_export_selected.onClick = function () { result.onExportSelected(); }
+
 	var btn_quit = btn_group.add("button", undefined, "Close");
 	btn_quit.helpTip = "Close the exporter UI."
 	btn_quit.onClick = function () { win.close(); };
@@ -1116,9 +1208,20 @@ function create_ui(doc)
 	// Refresh panels for initial setup
 	refresh_all();
 
-	// Export callback
+	// Export callbacks
 	panel_master.onExport = function() { 
-		run_sprite_export_process(doc, panel_project.getSelectedProjectFolder(), progress_callback);
+		run_sprite_export_process(doc, panel_project.getSelectedProjectFolder(), null, progress_callback);
+	};
+	panel_master.onExportSelected = function() { 
+		var selection = panel_export_list.getSelectedExport();
+		if (selection)
+		{
+			run_sprite_export_process(doc, panel_project.getSelectedProjectFolder(), selection, progress_callback);
+		}
+		else
+		{
+			log("Nothing selected. Ignoring command.");
+		}
 	};
 
 	// Log first line
@@ -1131,7 +1234,7 @@ function create_ui(doc)
 ///////////////////////////////////////////////////////////////////////////////
 // Export batch process script
 
-function sprite_export(project_folder, doc, progress_callback)
+function sprite_export(project_folder, doc, export_selection, progress_callback)
 {
 	// Cache layers
 	var layer_cache = new_layer_cache(doc);
@@ -1149,11 +1252,24 @@ function sprite_export(project_folder, doc, progress_callback)
 		var export_data = export_settings.export_batch_items[i];
 		progress_callback((i + 0.5) / export_settings.export_batch_items.length);
 
-		// Check soloing settings
-		if (!is_export_enabled(export_settings, i))
+		// Check if this layer should be exported
+		if (export_selection)
 		{
-			log("Item " + i + ": Skipping, soloing other items.");
-			continue;
+			// Custom selected layer for export
+			if (export_data != export_selection)
+			{
+				log("Item " + i + " not selected: Skipping.");
+				continue;
+			}
+		}
+		else
+		{
+			// Soloing check
+			if (!is_export_enabled(export_settings, i))
+			{
+				log("Item " + i + ": Skipping, soloing other items.");
+				continue;
+			}
 		}
 	
 		// Find the Photoshop layer to export
@@ -1195,16 +1311,20 @@ function sprite_export(project_folder, doc, progress_callback)
 			}
 
 			// Resize new image per setting
-			var resize_scale = export_data.resize / 100.0;
-			if (resize_scale != 1)
 			{
-				//log("Resizing with scale " + resize_scale);
+				var resized_size =  get_resized_size(export_doc, export_data);
 
 				export_doc.resizeImage(
-					export_doc.width * resize_scale, 
-					export_doc.height * resize_scale,
+					resized_size[0], 
+					resized_size[1],
 					export_doc.resolution,
 					ResampleMethod.BILINEAR);
+			}
+
+			// Trim
+			if (export_data.trim)
+			{
+				export_doc.trim(TrimType.TRANSPARENT, true, true, true, true);
 			}
 			
 			// Build target file name
@@ -1258,7 +1378,7 @@ function sprite_export(project_folder, doc, progress_callback)
 	}
 }
 
-function run_sprite_export_process(original_doc, project_folder, progress_callback)
+function run_sprite_export_process(original_doc, project_folder, selected_export, progress_callback)
 {
 	log("### Batch export process: Starting.")
 	progress_callback(0);
@@ -1268,7 +1388,7 @@ function run_sprite_export_process(original_doc, project_folder, progress_callba
 
 	try 
 	{
-		sprite_export(project_folder, doc, progress_callback);
+		sprite_export(project_folder, doc, selected_export, progress_callback);
 	}
 	catch (err)
 	{
