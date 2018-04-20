@@ -22,12 +22,9 @@
 ////////////////
 // Script configuration
 
-// TODO: button: add all layers with "export" in name
-// TODO: pattern for generating default export filename -> default filename after add -> replace spaces with underscores so 'select target' works straight away
-// TODO: 'clear solo' button to clear solo tags from all exports
-// TODO: allow running the export batch process without spawning the whole interface
-// TODO: allow configuring the export format options explicitly
-// TODO: cannot find any working way to make the log box auto scrolling... argh!
+// TODO: allow configuring the export format options explicitly (png, etc.) Is there any need, doesn't seem like it?
+// TODO: find out why exporting produces a different png often, what metadata is there in the file? time stamps? 
+// TODO: cannot find any working way to make the log box auto scrolling
 
 // $.level = 1 // Break on error - (Unfortunately Photoshop bugs when parsing actions list making this annoying to use)
 
@@ -35,7 +32,7 @@ const DEV_LOG_ENABLED = false;
 const PREFERRED_PANEL_WIDTH = 1000;
 const OPTIONS_FILENAME = "GBLSpriteExporterAppSettings.json";
 const APPLICATION_NAME = "GBL Texture Exporter"
-const APPLICATION_VERSION = "1.02"
+const APPLICATION_VERSION = "1.03"
 const XMP_METADATA_PROPERTY_NAME = "TextureExporterDocumentPreferencesJSONv1"
 const XMP_METADATA_NAMESPACE = "http://ns.gimblll.com/ps_texture_exporter";
 const XMP_METADATA_NS_PREFIX = "nsgbl:";
@@ -714,6 +711,16 @@ function create_export_list_panel(win, doc)
 		refresh_list_items();
 	};
 
+	function add_new_export_item(new_export_item)
+	{
+		// Add to the export batch list
+		var export_settings = get_export_settings(doc);
+		export_settings.export_batch_items.push(new_export_item);
+
+		// Store the new settings back to the doc
+		store_export_settings(doc, export_settings);
+	};
+
 	refresh_list();
 
 	var note_text = panel.add("statictext", undefined, undefined, { multiline : true });
@@ -738,15 +745,13 @@ function create_export_list_panel(win, doc)
 		// Create a new item with good defaults
 		var new_export_item = make_default_settings();
 		new_export_item.source_layer_name = selected_layer;
-		new_export_item.export_path = selected_layer + ".png";
 
-		// Read old settings and add the new
-		var export_settings = get_export_settings(doc);
-		export_settings.export_batch_items.push(new_export_item);
+		// Default export filename
+		var default_export_fn = (selected_layer + ".png")
+		default_value = default_export_fn.replace(/ /g, "_").replace(/:/g, "_");
+		new_export_item.export_path = default_value.toLowerCase();
 
-		// Store the new settings
-		store_export_settings(doc, export_settings);
-
+		add_new_export_item(new_export_item);
 		refresh_list();
 	}
 
@@ -760,8 +765,9 @@ function create_export_list_panel(win, doc)
 
 	layer_list.selection = 0;
 
-	// Remove item
 	var btn_group2 = panel.add("group");
+
+	// Remove item
 	var remove_btn = btn_group2.add("button", undefined, "Remove Selected");
 	remove_btn.minimumSize = [ 200, null ];
 	remove_btn.helpTip = "Remove the selected export batch item from the list"
@@ -775,11 +781,29 @@ function create_export_list_panel(win, doc)
 		refresh_buttons();
 	}
 
+	// Duplicate current item
+	var duplicate_btn = btn_group2.add("button", undefined, "Duplicate Selected");
+	duplicate_btn.minimumSize = [ 200, null ];
+	duplicate_btn.helpTip = "Duplicate the selected export batch item from the list"
+
+	duplicate_btn.onClick = function()
+	{
+		assert(result.getSelectedExport(), "Nothing selected, but still pressed remove.")
+
+		// Clone the selected export
+		var selected_export = result.getSelectedExport();
+		var cloned_export = JSON.parse(JSON.stringify(selected_export)); 
+
+		add_new_export_item(cloned_export);
+		refresh_list();
+	}
+
 	// Refresh stuff status on selection changes etc.
 	function refresh_buttons()
 	{
 		var export_selection = result.getSelectedExport();
 		remove_btn.enabled = !!export_selection;
+		duplicate_btn.enabled = !!export_selection;
 		layer_list.enabled = (layer_list.items.length > 0);
 		add_btn.enabled = layer_list.enabled;
 	}
@@ -1022,11 +1046,11 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 		if (export_data)
 		{
 			var resized_size =  get_resized_size(doc, export_data);
-			resize_text.text = "Resize (precentage or explicit NxN) (current export res: " + resized_size[0] + " x " + resized_size[1] + ")";
+			resize_text.text = "Resize (precentage or explicit N,N) (current export res: " + resized_size[0] + " x " + resized_size[1] + ")";
 		}
 		else
 		{
-			resize_text.text = "Resize (precentage or explicit NxN)";
+			resize_text.text = "Resize (precentage or explicit N,N)";
 		}
 	}
 
@@ -1074,10 +1098,10 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 
 			// Parse resize value
 			var resize_txt = resize_box.text;
-			if (resize_txt.indexOf('x') != -1)
+			if (resize_txt.indexOf(',') != -1)
 			{
 				// Assume explicit resolution (NxN)
-				var split = resize_txt.split('x');
+				var split = resize_txt.split(',');
 				var x = parseInt(split[0]) || -1;
 				var y = parseInt(split[1]) || -1;
 
@@ -1096,7 +1120,7 @@ function create_export_info_panel(win, doc, panel_project, panel_export_list)
 			{
 				// Assume single value (percentage)
 				var resize_value = parseInt(resize_box.text) || 100;
-				resize_value = Math.min(Math.max(resize_value, 1), 10000);
+				resize_value = Math.min(Math.max(resize_value, 1), 10000); // Clamp to safe range
 				export_data.resize = resize_value;
 			}
 
@@ -1311,14 +1335,20 @@ function sprite_export(project_folder, doc, export_selection, progress_callback)
 			}
 
 			// Resize new image per setting
+			var resized_size =  get_resized_size(export_doc, export_data);
+
 			{
-				var resized_size =  get_resized_size(export_doc, export_data);
+				// Force the resize to work in pixels (it works with whatever is in app settings by default)
+				var orig_ruler_units = app.preferences.rulerUnits;
+				app.preferences.rulerUnits = Units.PIXELS;
 
 				export_doc.resizeImage(
 					resized_size[0], 
 					resized_size[1],
 					export_doc.resolution,
 					ResampleMethod.BILINEAR);
+
+				app.preferences.rulerUnits = orig_ruler_units;
 			}
 
 			// Trim
@@ -1354,7 +1384,7 @@ function sprite_export(project_folder, doc, export_selection, progress_callback)
 			// Save new image to the target
 			if (save_options)
 			{
-				log("Item " + i + ": Exporting to '" + target_filename + "'");
+				log("Item " + i + ": Exporting to '" + target_filename + "' (res: " + resized_size[0] + "x" + resized_size[1] + ")");
 
 				var target_file = new File(target_filename);
 				export_doc.saveAs(target_file, save_options, true, Extension.LOWERCASE);

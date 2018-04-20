@@ -2,7 +2,7 @@
 
 ## Info
 
-#####NOTE: Photoshop CC 2015 (and 2015.5) broke table UI features from scripting, so the interface doesn't look as pretty as in the screenshot anymore. Maybe some day they can support again, maybe not.
+#####NOTE: Photoshop CC 2015 (and still broken as of 04/2018) broke/removed table UI features from scripting, so the interface doesn't look as pretty as in the screenshot anymore. Maybe some day they can support again, maybe not.
 
 GBL Texture Exporter is a tool for exporting textures from Photoshop PSD files. 
 
