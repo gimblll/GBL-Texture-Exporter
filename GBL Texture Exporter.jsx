@@ -29,10 +29,10 @@
 // $.level = 1 // Break on error - (Unfortunately Photoshop bugs when parsing actions list making this annoying to use)
 
 const DEV_LOG_ENABLED = false;
-const PREFERRED_PANEL_WIDTH = 1000;
+const PREFERRED_PANEL_WIDTH = 1200;
 const OPTIONS_FILENAME = "GBLSpriteExporterAppSettings.json";
 const APPLICATION_NAME = "GBL Texture Exporter"
-const APPLICATION_VERSION = "1.03"
+const APPLICATION_VERSION = "1.04"
 const XMP_METADATA_PROPERTY_NAME = "TextureExporterDocumentPreferencesJSONv1"
 const XMP_METADATA_NAMESPACE = "http://ns.gimblll.com/ps_texture_exporter";
 const XMP_METADATA_NS_PREFIX = "nsgbl:";
@@ -609,10 +609,10 @@ function create_export_list_panel(win, doc)
 
 	// List of export batch items
 	var export_list = panel.add("listbox", undefined, undefined, {
-		numberOfColumns: 6, 
+		numberOfColumns: 7, 
 		showHeaders: true,
-		columnTitles: ["Id", "Target Layer Name", "Status", "Export Path", "Action", "Resize", ],
-		columnWidths: [40, 250, 100, 300, 200, 60, ],
+		columnTitles: ["Enabled", "Source Layer Name", "Status", "Export Path", "Action", "Resize", "Trim" ],
+		columnWidths: [45, 280, 100, 440, 150, 60, 30 ],
 		});
 
 	export_list.preferredSize = [undefined, 200];
@@ -629,59 +629,45 @@ function create_export_list_panel(win, doc)
 
 			// Add item for the layer into the list
 			var export_list_item = export_list.items[i];
-//			export_list_item.text = i; 
-			export_list_item.text = "";
-
-			// TEMP KLUDGE UNTIL NEW TABLE API MANIFESTS ITSELF TO PHOTOSHOP
-			// ... WHICH SEESM TO BE NEVER
-			export_list_item.text += export_data.source_layer_name + " / "; 
 
 			// Layer name
-//			export_list_item.subItems[0].text = export_data.source_layer_name;
+			export_list_item.subItems[0].text = export_data.source_layer_name;
 		
 			// Status
 			var layer_exists = !!layer_cache.get_ps_layer(export_data.source_layer_name);
 			if (layer_exists)
 			{
-	//			export_list_item.subItems[1].text = "OK";
-				export_list_item.text += "OK" + " / "; 
+				export_list_item.subItems[1].text = "OK";
 			}
 			else
 			{
-//				export_list_item.subItems[1].text = "Layer not found";
-				export_list_item.text += "Layer not found" + " / "; 
+				export_list_item.subItems[1].text = "Layer not found";
 			}
 
 			// Target path
-//			export_list_item.subItems[2].text = export_data.export_path;
-			export_list_item.text += export_data.export_path + " / "; 
+			export_list_item.subItems[2].text = export_data.export_path;
 
 			// Action
 			if (export_data.post_action)
 			{
-//				export_list_item.subItems[3].text = export_data.post_action[1];
-				export_list_item.text += export_data.post_action[1] + " / "; 
+				export_list_item.subItems[3].text = export_data.post_action[1];
 			}
 			else
 			{
-//				export_list_item.subItems[3].text = "";
-				export_list_item.text += " / "; 
+				export_list_item.subItems[3].text = "";
 			}
 
 			// Resize
-//			export_list_item.subItems[4].text = export_data.resize;
-			export_list_item.text += export_data.resize + " / "; 
+			export_list_item.subItems[4].text = export_data.resize;
 
 			// Trim
-			export_list_item.text += export_data.trim + " / "; 
+			if (export_data.trim)
+				export_list_item.subItems[5].text = "X";
+//			else
+//				export_list_item.subItems[5].text = "";
 
-
-			if (is_export_enabled(export_settings, i))
-				export_list_item.text += "[]";
-			else
-				export_list_item.text += "[ NO EXPORT ]";
-
-//			export_list_item.checked = is_export_enabled(export_settings, i);
+			// Export enabled
+			export_list_item.checked = is_export_enabled(export_settings, i);
 		}
 	}
 
