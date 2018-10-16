@@ -2,15 +2,13 @@
 
 ## Info
 
-#####NOTE: Photoshop CC 2015 (and still broken as of 04/2018) broke/removed table UI features from scripting, so the interface doesn't look as pretty as in the screenshot anymore. Maybe some day they can support again, maybe not.
-
 GBL Texture Exporter is a tool for exporting textures from Photoshop PSD files. 
 
 Features:
 - Create a batch of export items from top level layers or groups, single layer can be set to export
 multiple times with different settings
 - Relative export paths, root folder changeable through global settings
-- Resizing control for each individual export item
+- Resize and trim control for each individual export item
 - Apply custom action to the flattened export layer to do additional modifications
 - Settings stored inside the PSD as XMP metadata, no extra files to keep track of
 - Textures are exported as png or tga (format is deduced from export path filename)
