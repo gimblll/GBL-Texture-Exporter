@@ -13,6 +13,8 @@ multiple times with different settings
 - Settings stored inside the PSD as XMP metadata, no extra files to keep track of
 - Textures are exported as png or tga (format is deduced from export path filename)
 
+Compatible with Photoshop CC 2019 and newer. Use older commit if you need earlier compatibility. This is because CC 2019 reintroduced missing scripting functionality that went missing from CC 2015 onwards, and the newest commit uses it again.
+
 ## Screenshot
 
 ![UI Screenshot](https://raw.githubusercontent.com/gimblll/GBL-Texture-Exporter/master/screenshot.png)
